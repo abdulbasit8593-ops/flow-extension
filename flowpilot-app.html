@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FlowPilot</title>
+  <style>
+    /* ============================================================
+       STYLES
+       Simple dark theme. Everything uses CSS variables so it's
+       easy to change colors later.
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f0f0f;   /* main background */
+      --surf:     #161616;   /* card/panel surface */
+      --surf2:    #1c1c1c;   /* slightly lighter surface */
+      --border:   #242424;   /* borders */
+      --b2:       #303030;   /* slightly lighter border */
+      --text:     #e8e8e8;   /* main text */
+      --muted:    #555;      /* muted/placeholder text */
+      --dim:      #888;      /* dimmed text */
+      --indigo:   #6366f1;   /* primary accent */
+      --ind2:     #4f46e5;   /* primary accent hover */
+      --green:    #4ade80;   /* success */
+      --red:      #f87171;   /* error */
+      --yellow:   #facc15;   /* warning */
+      --orange:   #fb923c;   /* generate button */
+      --r:        9px;       /* border radius */
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      overflow: hidden; /* no body scroll — each panel scrolls independently */
+      height: 100vh;
+    }
+
+    /* ── TOPBAR ──────────────────────────────────────────────── */
+    /* Contains: logo, connection status, and all Flow settings */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 20px;
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surf);
+      flex-shrink: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    .topbar::-webkit-scrollbar { height: 3px; }
+    .topbar::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .logo {
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      flex-shrink: 0;
+      margin-right: 6px;
+    }
+    .logo em { color: var(--indigo); font-style: normal; }
+
+    /* Vertical divider between sections in topbar */
+    .divider {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    /* Connection status pill */
+    .conn-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+    .conn-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+    .conn-dot.ok   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .conn-dot.warn { background: var(--yellow); }
+
+    /* Settings group in topbar (label + controls) */
+    .setting-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .setting-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      white-space: nowrap;
+    }
+
+    /* Pill button group (Image/Video, Frames/Ingredients, x1/x2/x3/x4, 9:16/16:9) */
+    .pill-group {
+      display: flex;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .pill-btn {
+      padding: 4px 10px;
+      border-radius: 5px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+    .pill-btn:hover { color: var(--text); }
+    .pill-btn.active { background: var(--surf2); color: var(--text); }
+    .pill-btn.running { opacity: 0.5; pointer-events: none; }
+
+    /* Model dropdown selector */
+    select.model-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* Read settings button */
+    .read-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 7px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.12s;
+    }
+    .read-btn:hover { border-color: var(--b2); color: var(--text); }
+
+    /* ── LAYOUT ──────────────────────────────────────────────── */
+    /* Three columns: sidebar | main | debug */
+    .layout {
+      display: flex;
+      height: calc(100vh - 52px);
+    }
+
+    /* ── LEFT SIDEBAR ────────────────────────────────────────── */
+    /* File upload, master prompt, build button */
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .ss {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ss:last-of-type { border-bottom: none; }
+    .ss-scroll { flex: 1; overflow-y: auto; padding: 14px 16px; }
+
+    .lbl {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 8px;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--b2);
+      border-radius: var(--r);
+      padding: 14px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .upload-zone:hover { border-color: var(--indigo); background: rgba(99,102,241,0.05); }
+    .upload-zone.loaded { border-color: var(--green); border-style: solid; background: rgba(74,222,128,0.05); }
+    .uz-icon { font-size: 22px; margin-bottom: 4px; }
+    .uz-main { font-size: 12px; color: var(--dim); }
+    .uz-loaded { font-size: 12px; font-weight: 600; color: var(--green); }
+    .uz-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    input[type="file"] { display: none; }
+
+    /* Textarea */
+    textarea {
+      width: 100%;
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 9px 11px;
+      resize: vertical;
+      outline: none;
+      font-family: "Consolas", "Courier New", monospace;
+      line-height: 1.6;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--indigo); }
+
+    .hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .hint code { color: #818cf8; background: rgba(99,102,241,0.1); padding: 1px 4px; border-radius: 3px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      border-radius: 7px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-primary { background: var(--indigo); color: #fff; width: 100%; justify-content: center; }
+    .btn-primary:hover { background: var(--ind2); }
+    .btn-primary:disabled { background: var(--surf2); color: var(--muted); cursor: not-allowed; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; background: var(--surf2); color: var(--dim); border: 1px solid var(--border); border-radius: 7px; cursor: pointer; transition: all 0.12s; }
+    .btn-sm:hover { border-color: var(--b2); color: var(--text); }
+
+    /* Progress bar */
+    .prog-wrap { margin-top: 10px; display: none; }
+    .prog-track { height: 4px; background: var(--surf2); border-radius: 10px; overflow: hidden; margin-bottom: 4px; }
+    .prog-fill { height: 100%; background: var(--indigo); border-radius: 10px; transition: width 0.4s; }
+    .prog-lbl { font-size: 11px; color: var(--muted); }
+
+    /* ── MAIN CONTENT ────────────────────────────────────────── */
+    /* Scrollable list of line blocks */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 20px 60px;
+    }
+
+    /* Empty state shown before blocks are built */
+    .empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      gap: 12px;
+      color: var(--muted);
+    }
+    .empty .big { font-size: 42px; }
+    .empty p { font-size: 14px; text-align: center; line-height: 1.7; }
+
+    /* ── LINE BLOCKS ─────────────────────────────────────────── */
+    #blocks { display: flex; flex-direction: column; gap: 10px; }
+
+    .block {
+      background: var(--surf);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .block.st-generating { border-color: var(--indigo); }
+    .block.st-done       { border-color: #1e3a1e; }
+    .block.st-error      { border-color: #3a1e1e; }
+
+    /* Block header row */
+    .bhead {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #111;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .bhead:hover { background: #181818; }
+    
+    .bnum {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--indigo);
+      background: rgba(99,102,241,0.1);
+      border: 1px solid rgba(99,102,241,0.3);
+      padding: 2px 8px;
+      border-radius: 5px;
+      flex-shrink: 0;
+    }
+    .bline-preview {
+      flex: 1;
+      font-size: 12px;
+      color: var(--dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .bstat {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+    .s-idle       { background: var(--surf2); color: var(--muted); }
+    .s-generating { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .s-done       { background: rgba(74,222,128,0.1); color: var(--green); }
+    .s-error      { background: rgba(248,113,113,0.1); color: var(--red); }
+
+    /* Generate button on each block */
+    .genbtn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--orange);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .genbtn:hover { background: #ea7c1e; }
+    .genbtn:disabled { background: var(--surf2); color: var(--muted); cursor: not-allowed; }
+    
+    /* Regenerate specific styling */
+    .regenbtn {
+      background: var(--surf2); color: var(--text); border: 1px solid var(--border);
+    }
+    .regenbtn:hover { border-color: var(--indigo); color: var(--indigo); background: rgba(99,102,241,0.1); }
+
+    /* Block body */
+    .bbody { padding: 11px 12px; display: flex; flex-direction: column; gap: 7px; display: none; }
+    .block.expanded .bbody { display: flex; }
+
+    /* Shows the raw script line for reference */
+    .raw-line {
+      font-size: 11px;
+      color: var(--muted);
+      padding: 5px 9px;
+      background: #0d0d0d;
+      border-radius: 6px;
+      border-left: 3px solid var(--b2);
+      line-height: 1.5;
+    }
+
+    /* Editable prompt textarea */
+    textarea.prompt-edit { min-height: 70px; font-size: 12px; }
+
+    /* Error message shown below textarea on failure */
+    .err-msg {
+      font-size: 11px;
+      color: var(--red);
+      padding: 5px 9px;
+      background: rgba(248,113,113,0.07);
+      border-radius: 6px;
+      border-left: 3px solid var(--red);
+      display: none;
+    }
+    .block.st-error .err-msg { display: block; }
+
+    /* ── DEBUG PANEL ─────────────────────────────────────────── */
+    /* Right-side log panel showing all activity in real time */
+    .debug-panel {
+      width: 300px;
+      flex-shrink: 0;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: #0a0a0a;
+    }
+    .debug-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 13px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .debug-title { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .debug-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 10px;
+    }
+
+    /* Individual log entry */
+    .log-entry {
+      padding: 4px 7px;
+      border-radius: 4px;
+      background: #111;
+      border-left: 3px solid #222;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .log-entry.info    { border-left-color: #60a5fa; }
+    .log-entry.ok      { border-left-color: var(--green); }
+    .log-entry.warn    { border-left-color: var(--yellow); }
+    .log-entry.error   { border-left-color: var(--red); background: rgba(248,113,113,0.05); }
+    .log-entry.bridge  { border-left-color: #a78bfa; }
+    .log-entry.send    { border-left-color: var(--orange); }
+    .log-time  { color: #333; margin-right: 5px; }
+    .log-msg   { color: #bbb; }
+    .log-data  { color: #444; margin-top: 2px; display: block; font-size: 9px; }
+
+    .debug-empty { color: #333; text-align: center; padding: 30px 10px; font-size: 11px; }
+
+    /* ── TOAST NOTIFICATION ──────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surf);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 20px;
+      font-size: 13px;
+      color: var(--text);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      opacity: 0;
+      transition: all 0.25s;
+      z-index: 300;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .toast.show  { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.ok    { border-color: var(--green); color: var(--green); }
+    .toast.error { border-color: var(--red); color: var(--red); }
+
+    /* Loading spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border: 2px solid #333;
+      border-top-color: var(--indigo);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════════════════
+       TOPBAR
+       Contains: Logo | Connection | Flow Settings
+  ══════════════════════════════════════════════════════════ -->
+  <div class="topbar">
+
+    <!-- Logo -->
+    <div class="logo">Flow<em>Pilot</em></div>
+    <div class="divider"></div>
+    <a href="/editor" class="read-btn" style="text-decoration: none;">📝 Text Editor</a>
+    
+    <div class="divider"></div>
+    <!-- Project Indicator -->
+    <div class="conn-pill" style="background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.3);">
+        <span id="activeProjectLabel" style="color:#818cf8; font-weight:600;">No Project</span>
+    </div>
+
+    <!-- Connection status -->
+    <div class="conn-pill">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connText">Waiting…</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Read all settings from Flow button -->
+    <button class="read-btn" onclick="readAllSettings()" title="Read current settings from Google Flow">
+      🔍 Read Flow State
+    </button>
+
+    <div class="divider"></div>
+
+    <!-- Mode: Image / Video -->
+    <div class="setting-group">
+      <span class="setting-label">Mode</span>
+      <div class="pill-group" id="modeGroup">
+        <button class="pill-btn" data-cmd="SET_MODE_IMAGE" onclick="sendSetting('SET_MODE_IMAGE', {}, 'modeGroup', this)">Image</button>
+        <button class="pill-btn active" data-cmd="SET_MODE_VIDEO" onclick="sendSetting('SET_MODE_VIDEO', {}, 'modeGroup', this)">Video</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Video type: Frames / Ingredients (only relevant in Video mode) -->
+    <div class="setting-group" id="videoTypeGroup">
+      <span class="setting-label">Type</span>
+      <div class="pill-group" id="typeGroup">
+        <button class="pill-btn active" data-cmd="SET_VIDEO_MODE_FRAMES" onclick="sendSetting('SET_VIDEO_MODE_FRAMES', {}, 'typeGroup', this)">Frames</button>
+        <button class="pill-btn" data-cmd="SET_VIDEO_MODE_INGREDIENTS" onclick="sendSetting('SET_VIDEO_MODE_INGREDIENTS', {}, 'typeGroup', this)">Ingredients</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Aspect ratio -->
+    <div class="setting-group">
+      <span class="setting-label">Ratio</span>
+      <div class="pill-group" id="ratioGroup">
+        <button class="pill-btn active" onclick="sendSetting('SET_ASPECT_RATIO', {ratio:'9:16'}, 'ratioGroup', this)">9:16</button>
+        <button class="pill-btn"        onclick="sendSetting('SET_ASPECT_RATIO', {ratio:'16:9'}, 'ratioGroup', this)">16:9</button>
+        <button class="pill-btn"        onclick="sendSetting('SET_ASPECT_RATIO', {ratio:'4:3'},  'ratioGroup', this)">4:3</button>
+        <button class="pill-btn"        onclick="sendSetting('SET_ASPECT_RATIO', {ratio:'1:1'},  'ratioGroup', this)">1:1</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Video count: x1 / x2 / x3 / x4 -->
+    <div class="setting-group">
+      <span class="setting-label">Count</span>
+      <div class="pill-group" id="countGroup">
+        <button class="pill-btn"        onclick="sendSetting('SET_COUNT', {count:'x1'}, 'countGroup', this)">x1</button>
+        <button class="pill-btn"        onclick="sendSetting('SET_COUNT', {count:'x2'}, 'countGroup', this)">x2</button>
+        <button class="pill-btn"        onclick="sendSetting('SET_COUNT', {count:'x3'}, 'countGroup', this)">x3</button>
+        <button class="pill-btn active" onclick="sendSetting('SET_COUNT', {count:'x4'}, 'countGroup', this)">x4</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Model selector (dropdown because there are more options) -->
+    <div class="setting-group">
+      <span class="setting-label">Model</span>
+      <select class="model-select" id="modelSelect" onchange="onModelChange(this)">
+        <optgroup label="Video">
+          <option value="Veo 3.1 - Fast">Veo 3.1 Fast</option>
+          <option value="Veo 3.1 - Quality">Veo 3.1 Quality</option>
+        </optgroup>
+        <optgroup label="Image">
+          <option value="Nano Banana Pro">🍌 NB Pro</option>
+          <option value="Nano Banana 2">🍌 NB 2</option>
+          <option value="Imagen 4">Imagen 4</option>
+        </optgroup>
+      </select>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       THREE-COLUMN LAYOUT
+  ══════════════════════════════════════════════════════════ -->
+  <div class="layout">
+
+    <!-- ── LEFT SIDEBAR ──────────────────────────────────────── -->
+    <div class="sidebar">
+
+      <!-- Master prompt section -->
+      <div class="ss" style="flex: 1; display: flex; flex-direction: column;">
+        <span class="lbl">1 — Master Prompt</span>
+        <textarea id="masterPrompt" style="flex: 1; min-height: 200px;"
+          placeholder="Paste your prompt here.&#10;Use {{he_says}} where each line goes."></textarea>
+        <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <div class="hint">Use <code>{{he_says}}</code> as the placeholder.</div>
+          <button class="btn-sm" type="button" onclick="insertHeSays()">+ {{he_says}}</button>
+        </div>
+      </div>
+
+      <!-- Build + actions -->
+      <div class="ss">
+        <button class="btn btn-primary" id="buildBtn" disabled onclick="buildBlocks()">
+          ⚡ Build Line Blocks
+        </button>
+        <div class="prog-wrap" id="progWrap">
+          <div class="prog-track">
+            <div class="prog-fill" id="progFill" style="width:0%"></div>
+          </div>
+          <div class="prog-lbl" id="progLbl"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <button class="btn-sm" onclick="clearAll()">Clear all</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── MAIN CONTENT ──────────────────────────────────────── -->
+    <div class="content">
+      <div id="blocks">
+        <div class="empty">
+          <div class="big">📝</div>
+          <p>Upload your script and paste your master prompt.<br>
+          Click <strong>Build Line Blocks</strong> to begin.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DEBUG PANEL ───────────────────────────────────────── -->
+    <div class="debug-panel">
+      <div class="debug-header">
+        <span class="debug-title">Activity Log</span>
+        <button class="btn-sm" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="debug-log" id="debugLog">
+        <div class="debug-empty">Nothing yet…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast notification -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       JAVASCRIPT
+  ══════════════════════════════════════════════════════════ -->
+  <script>
+
+  // ============================================================
+  // SECTION 1: STATE
+  // All mutable state lives here. Never scattered across functions.
+  // ============================================================
+
+  const state = {
+    lines:       [],     // Script lines parsed from the uploaded file
+    bridgeReady: false,  // True once app-bridge.js has connected
+    reqSeq:      0,      // Auto-incrementing ID for each command request
+    pending:     {},     // Map of reqId → { command, resolve, reject }
+    logEntries:  [],     // Array of log entries for the debug panel
+  };
+
+
+  // ============================================================
+  // SECTION 2: LOGGING
+  // Everything goes through addLog() so we have a single place
+  // to control what gets shown in the debug panel.
+  // ============================================================
+
+  // Add a log entry to the debug panel
+  // level: "info" | "ok" | "warn" | "error" | "bridge" | "send"
+  function addLog(message, data, level = "info") {
+    const time = new Date().toLocaleTimeString("en-US", { hour12: false });
+    state.logEntries.push({ time, message, data, level });
+
+    // Keep max 400 entries to avoid memory issues
+    if (state.logEntries.length > 400) {
+      state.logEntries.splice(0, state.logEntries.length - 400);
+    }
+
+    renderLog();
+  }
+
+  // Re-render the debug panel from state.logEntries (newest at top)
+  function renderLog() {
+    const el = document.getElementById("debugLog");
+    if (state.logEntries.length === 0) {
+      el.innerHTML = '<div class="debug-empty">Nothing yet…</div>';
+      return;
+    }
+
+    el.innerHTML = [...state.logEntries].reverse().map(entry => {
+      const dataStr = entry.data
+        ? `<span class="log-data">${esc(
+            typeof entry.data === "object"
+              ? JSON.stringify(entry.data)
+              : String(entry.data)
+          )}</span>`
+        : "";
+      return `<div class="log-entry ${entry.level}">
+        <span class="log-time">${entry.time}</span>
+        <span class="log-msg">${esc(entry.message)}</span>
+        ${dataStr}
+      </div>`;
+    }).join("");
+  }
+
+  function clearLog() {
+    state.logEntries = [];
+    renderLog();
+  }
+
+
+  // ============================================================
+  // SECTION 3: BRIDGE COMMUNICATION
+  // The bridge (app-bridge.js) is injected by the extension.
+  // We communicate with it via window.postMessage.
+  // ============================================================
+
+  // Listen for all messages from the bridge
+  window.addEventListener("message", (event) => {
+    // Only accept messages from our own page
+    if (event.source !== window) return;
+    const msg = event.data;
+    if (!msg || !msg.type) return;
+
+    handleBridgeMessage(msg);
+  });
+
+  // Route bridge messages to the right handler
+  function handleBridgeMessage(msg) {
+    if (msg.type === "FP_READY") {
+      // Bridge is ready — acknowledge it so it stops retrying
+      window.postMessage({ type: "FP_ACK" }, "*");
+      addLog("Bridge signal received, sending ACK", null, "bridge");
+      return;
+    }
+
+    if (msg.type === "FP_CONFIRMED") {
+      // Bridge confirmed it got our ACK — we're fully connected
+      if (!state.bridgeReady) {
+        state.bridgeReady = true;
+        addLog("✓ Bridge confirmed connected", null, "ok");
+        // Now run the connection verification test
+        verifyConnection();
+      }
+      return;
+    }
+
+    if (msg.type === "FP_RESPONSE") {
+      // A command response came back — resolve the pending promise
+      const pending = state.pending[msg.reqId];
+      if (!pending) {
+        addLog(`Unexpected response (no pending request for reqId ${msg.reqId})`, null, "warn");
+        return;
+      }
+      delete state.pending[msg.reqId];
+
+      if (msg.ok) {
+        addLog(`✓ ${pending.command} succeeded`, msg.data || null, "ok");
+      } else {
+        addLog(`✗ ${pending.command} failed: ${msg.error}`, null, "error");
+      }
+
+      pending.resolve(msg);
+      return;
+    }
+
+    if (msg.type === "FP_EVENT") {
+      // An event came from the extension (e.g. FLOW_STATE_CHANGED)
+      addLog(`Event: ${msg.event}`, msg.data || null, "info");
+      return;
+    }
+
+    // Bridge internal log messages
+    if (msg.type === "FP_BRIDGE_LOG") {
+      addLog(`[bridge] ${msg.message}`, msg.data || null, "bridge");
+      return;
+    }
+  }
+
+  // Send a command to the extension through the bridge.
+  // Returns a Promise that resolves with { ok, data } or rejects with an Error.
+  function sendCommand(command, payload = {}) {
+    return new Promise((resolve, reject) => {
+      // Can't send if the bridge isn't ready
+      if (!state.bridgeReady) {
+        const err = "Bridge not ready. Is the FlowPilot extension installed?";
+        addLog(`✗ ${command}: bridge not ready`, null, "error");
+        reject(new Error(err));
+        return;
+      }
+
+      // Create a unique ID for this request so we can match the response
+      const reqId = ++state.reqSeq;
+
+      // Store the callbacks so handleBridgeMessage can call them when the response arrives
+      state.pending[reqId] = { command, resolve, reject };
+
+      // Log the outgoing command
+      addLog(`→ ${command}`, Object.keys(payload).length ? payload : null, "send");
+
+      // Post the command to the bridge
+      window.postMessage({ type: "FP_COMMAND", reqId, command, payload }, "*");
+
+      // Timeout after 15 seconds — prevents hanging promises
+      setTimeout(() => {
+        if (state.pending[reqId]) {
+          delete state.pending[reqId];
+          const err = `${command} timed out (15s). Make sure Google Flow is open.`;
+          addLog(`⏱ ${err}`, null, "warn");
+          reject(new Error(err));
+        }
+      }, 15000);
+    });
+  }
+
+
+  // ============================================================
+  // SECTION 4: CONNECTION VERIFICATION
+  // When the bridge connects, we run a real test:
+  //   1. Ping the extension
+  //   2. Read the current Flow settings
+  //   3. Display them in the UI
+  // This confirms the whole chain works end-to-end.
+  // ============================================================
+
+  async function verifyConnection() {
+    addLog("Running connection verification test…", null, "info");
+    setConn("warn", "Verifying…");
+
+    try {
+      // Step 1: Basic ping
+      addLog("Step 1: Pinging extension…", null, "info");
+      const pingResp = await sendCommand("PING");
+      if (!pingResp.ok) throw new Error("Ping failed: " + pingResp.error);
+      addLog("Step 1 passed: extension is alive", null, "ok");
+
+      // Step 2: Read actual settings from Flow
+      addLog("Step 2: Reading Flow settings…", null, "info");
+      const stateResp = await sendCommand("GET_FLOW_STATE");
+      if (!stateResp.ok) throw new Error("GET_FLOW_STATE failed: " + stateResp.error);
+
+      const flowState = stateResp.data;
+      addLog("Step 2 passed: Flow settings read", flowState, "ok");
+
+      // Step 3: Update the UI to match what Flow actually has
+      syncSettingsUI(flowState);
+      addLog("Step 3: UI synced with Flow settings", null, "ok");
+
+      // All good!
+      setConn("ok", `Connected · ${flowState.mode || "?"} mode`);
+      showToast("✓ Connected to Flow", "ok");
+
+    } catch (err) {
+      addLog(`✗ Verification failed: ${err.message}`, null, "error");
+
+      // Give a helpful diagnosis
+      if (err.message.includes("No Google Flow tab")) {
+        setConn("warn", "Open labs.google/flow");
+        addLog("→ Open labs.google/flow in another Chrome tab", null, "warn");
+      } else {
+        setConn("err", "Connection failed");
+      }
+    }
+  }
+
+  // Read all current settings from Flow and update UI to match
+  async function readAllSettings() {
+    addLog("Reading all settings from Flow…", null, "info");
+    try {
+      // Read state from Flow's DOM
+      const resp = await sendCommand("GET_FLOW_STATE");
+      if (!resp.ok) throw new Error(resp.error);
+
+      // Also read the current prompt text
+      const promptResp = await sendCommand("READ_PROMPT");
+      const promptText = promptResp.ok ? promptResp.data?.text : "";
+
+      addLog("Flow state read successfully", resp.data, "ok");
+
+      // Update all UI controls to match
+      syncSettingsUI(resp.data);
+
+      // Show the current prompt in a toast if there is one
+      if (promptText) {
+        addLog(`Current prompt (${promptText.length} chars): "${promptText.substring(0, 80)}…"`, null, "info");
+        showToast("Settings read ✓", "ok");
+      } else {
+        showToast("Settings read ✓ (prompt empty)", "ok");
+      }
+
+    } catch (err) {
+      addLog(`✗ Read failed: ${err.message}`, null, "error");
+      showToast("Failed to read settings", "error");
+    }
+  }
+
+  // Update the topbar pill buttons to match what Flow currently has
+  function syncSettingsUI(flowState) {
+    if (!flowState) return;
+
+    // Mode buttons
+    if (flowState.mode) {
+      setActivePill("modeGroup",
+        flowState.mode === "video" ? "SET_MODE_VIDEO" : "SET_MODE_IMAGE"
+      );
+    }
+
+    // Sub-mode buttons (Frames / Ingredients)
+    if (flowState.subMode) {
+      setActivePill("typeGroup",
+        flowState.subMode === "frames" ? "SET_VIDEO_MODE_FRAMES" : "SET_VIDEO_MODE_INGREDIENTS"
+      );
+    }
+
+    addLog(`UI synced: mode=${flowState.mode} subMode=${flowState.subMode}`, null, "info");
+  }
+
+
+  // ============================================================
+  // SECTION 5: SETTINGS COMMANDS (topbar buttons)
+  // Each button in the topbar calls sendSetting() which:
+  //   1. Marks the button as active in the UI immediately
+  //   2. Sends the command to the extension
+  //   3. Logs the result
+  // ============================================================
+
+  // Called by all topbar setting buttons
+  async function sendSetting(command, payload, groupId, buttonEl) {
+    // Update UI immediately (optimistic update)
+    setActivePill(groupId, command);
+
+    addLog(`Setting: ${command}`, payload || null, "send");
+
+    try {
+      const resp = await sendCommand(command, payload);
+      if (!resp.ok) {
+        addLog(`✗ ${command} failed: ${resp.error}`, null, "error");
+        showToast(`Failed: ${resp.error}`, "error");
+      } else {
+        addLog(`✓ ${command} applied`, null, "ok");
+      }
+    } catch (err) {
+      addLog(`✗ ${command} error: ${err.message}`, null, "error");
+      showToast(err.message, "error");
+    }
+  }
+
+  // Model dropdown change handler
+  async function onModelChange(selectEl) {
+    const modelName = selectEl.value;
+    const isVideoModel = modelName.includes("Veo");
+    const command = isVideoModel ? "SELECT_VIDEO_MODEL" : "SELECT_IMAGE_MODEL";
+
+    addLog(`Setting model: ${modelName}`, null, "send");
+    try {
+      const resp = await sendCommand(command, { modelName });
+      if (!resp.ok) {
+        addLog(`✗ Model select failed: ${resp.error}`, null, "error");
+        showToast(`Failed: ${resp.error}`, "error");
+      } else {
+        addLog(`✓ Model set to ${modelName}`, null, "ok");
+      }
+    } catch (err) {
+      addLog(`✗ Model error: ${err.message}`, null, "error");
+    }
+  }
+
+  // Mark one button in a pill group as active, all others as inactive
+  function setActivePill(groupId, activeCommand) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    group.querySelectorAll(".pill-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.cmd === activeCommand);
+    });
+  }
+
+
+  // ============================================================
+  // SECTION 6: SCRIPT LOADING (via SQLite backend synced from Editor)
+  // ============================================================
+  
+  let currentProject = "";
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    currentProject = localStorage.getItem("activeProjectName");
+    
+    if (!currentProject) {
+      addLog("No active project found in database. Go to Editor to select one.", null, "warn");
+      document.getElementById("activeProjectLabel").textContent = "No Project";
+      return;
+    }
+    
+    document.getElementById("activeProjectLabel").textContent = "Project: " + esc(currentProject);
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/projects/${encodeURIComponent(currentProject)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.project) {
+          // Restore Master Prompt
+          if (data.project.master_prompt) {
+             document.getElementById('masterPrompt').value = data.project.master_prompt;
+          }
+          
+          // Restore lines history directly from the parsed data
+          const linesHistory = data.project.lines_history ? JSON.parse(data.project.lines_history) : [];
+          if (linesHistory.length > 0) {
+            state.lines = linesHistory;
+            addLog(`Script loaded from Database for ${currentProject}`, { lines: state.lines.length }, "ok");
+            showToast(`Loaded ${state.lines.length} lines`, "ok");
+          } else {
+             // Fallback for older projects: Try extracting from text using Turndown as fallback
+             const edHtml = data.project.editor_content;
+             if (edHtml) {
+                // Not ideal but works backward compatible
+                 const dummyDiv = document.createElement('div');
+                 dummyDiv.innerHTML = edHtml;
+                 const textNodes = Array.from(dummyDiv.querySelectorAll('p')).map(p => p.textContent);
+                 // We don't implement full fallback. Inform user.
+                 addLog("No parsed lines history found. Go to 'Send to Flow' in Editor.", null, "warn");
+             }
+          }
+          updateBuildBtn();
+          if (state.lines.length > 0 && data.project.master_prompt) {
+              buildBlocks();
+          }
+        }
+      }
+    } catch(e) {
+      console.error(e);
+      addLog("Failed to fetch database project", null, "error");
+    }
+  });
+
+
+  // ============================================================
+  // SECTION 7: MASTER PROMPT
+  // The master prompt has {{he_says}} which gets replaced per line.
+  // ============================================================
+
+  document.getElementById("masterPrompt").addEventListener("input", () => {
+    updateBuildBtn();
+    liveUpdatePrompts(); // update block textareas in real time
+  });
+
+  // Check if both a file and a valid prompt are ready, then enable the Build button
+  function updateBuildBtn() {
+    const master = document.getElementById("masterPrompt").value.trim();
+    const hasLines = state.lines.length > 0;
+    const hasPlaceholder = master.includes("{{he_says}}");
+    document.getElementById("buildBtn").disabled = !(hasLines && hasPlaceholder);
+    
+    // Auto-save master prompt to DB when typing
+    if (currentProject) {
+        clearTimeout(window._masterPromptTimer);
+        window._masterPromptTimer = setTimeout(() => {
+            fetch(`http://localhost:3000/api/projects/${encodeURIComponent(currentProject)}`, {
+               method: "PATCH",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ master_prompt: master })
+            });
+        }, 1500);
+    }
+  }
+
+  // Insert {{he_says}} at cursor position
+  function insertHeSays() {
+    const mp = document.getElementById("masterPrompt");
+    const textToInsert = "{{he_says}}";
+    const start = mp.selectionStart;
+    const end = mp.selectionEnd;
+    const text = mp.value;
+    mp.value = text.slice(0, start) + textToInsert + text.slice(end);
+    mp.focus();
+    mp.selectionStart = mp.selectionEnd = start + textToInsert.length;
+    
+    // Trigger input event to update build button
+    mp.dispatchEvent(new Event('input'));
+  }
+
+  // Replace {{he_says}} in the template with the actual line
+  function buildPrompt(template, line) {
+    return template.replace(/\{\{he_says\}\}/gi, line);
+  }
+
+  // Update all block textareas that haven't been manually edited
+  function liveUpdatePrompts() {
+    const master = document.getElementById("masterPrompt").value.trim();
+    document.querySelectorAll(".block").forEach((block, i) => {
+      const ta = block.querySelector(".prompt-edit");
+      if (ta && !ta.dataset.edited) {
+        const lineObj = state.lines[i] || { text: "" };
+        ta.value = buildPrompt(master, lineObj.text);
+      }
+    });
+  }
+
+
+  // ============================================================
+  // SECTION 8: BUILD BLOCKS
+  // Creates one Line Block per script line.
+  // ============================================================
+
+  function buildBlocks() {
+    const master = document.getElementById("masterPrompt").value.trim();
+    if (!state.lines.length || !master.includes("{{he_says}}")) return;
+
+    const container = document.getElementById("blocks");
+    container.innerHTML = ""; // clear existing blocks
+
+    // Create one block per line
+    state.lines.forEach((lineObj, index) => {
+      const prompt = lineObj.prompt || buildPrompt(master, lineObj.text);
+      container.appendChild(createBlock(index, lineObj, prompt));
+      
+      // Auto-resize the newly created textarea safely on next tick so DOM heights register
+      setTimeout(() => {
+        const ta = document.getElementById(`prompt-${index}`);
+        if(ta) {
+          ta.style.height = ''; 
+          ta.style.height = ta.scrollHeight + 'px';
+        }
+      }, 0);
+    });
+
+    // Show progress bar
+    document.getElementById("progWrap").style.display = "block";
+    updateProgress();
+
+    addLog(`Built ${state.lines.length} line blocks`, null, "ok");
+  }
+
+  // Create a single line block DOM element
+  function createBlock(index, lineObj, prompt) {
+    const div = document.createElement("div");
+    div.className = "block";
+    div.dataset.index = index;
+    div.dataset.status = "idle";
+    
+    // Check if color metadata was parsed successfully to visualize in raw block
+    const colorBadge = lineObj.color ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:var(--${lineObj.color}); color:#000;">${lineObj.color}</span>` : '';
+
+    div.innerHTML = `
+      <div class="bhead" onclick="this.parentElement.classList.toggle('expanded')">
+        <span class="bnum" style="white-space:nowrap;">Line ${index + 1} &middot; ${lineObj.words}w</span>
+        <span class="bline-preview">${esc(lineObj.text)}</span>
+        <span class="bstat s-idle" id="bstat-${index}" style="margin-right:auto;">Idle</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="genbtn regenbtn" id="regenbtn-${index}" onclick="event.stopPropagation(); generateLine(${index})" style="display:none;">
+            ↺ Regenerate
+          </button>
+          <button class="genbtn" id="genbtn-${index}" onclick="event.stopPropagation(); generateLine(${index})">
+            ▶ Generate
+          </button>
+        </div>
+      </div>
+      <div class="bbody">
+        <div class="raw-line" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>${esc(lineObj.text)}</span>
+          ${colorBadge}
+        </div>
+        <textarea class="prompt-edit" id="prompt-${index}" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px';">${esc(prompt)}</textarea>
+        <div class="err-msg" id="errmsg-${index}"></div>
+      </div>`;
+
+    // Track if the user manually edits the prompt so we don't overwrite it
+    // and sync the exact prompt back to the DB so refresh remembers it
+    div.querySelector(".prompt-edit").addEventListener("input", e => {
+      e.target.dataset.edited = "true";
+      lineObj.prompt = e.target.value;
+      if (currentProject) {
+        clearTimeout(window['_lineSaveTimer' + index]);
+        window['_lineSaveTimer' + index] = setTimeout(() => {
+           fetch(`http://localhost:3000/api/projects/${encodeURIComponent(currentProject)}`, {
+               method: "PATCH",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ lines_history: state.lines })
+           });
+        }, 1500);
+      }
+    });
+
+    return div;
+  }
+
+
+  // ============================================================
+  // SECTION 9: GENERATE A LINE
+  // Sends SET_PROMPT then CLICK_GENERATE to the Flow tab.
+  // ============================================================
+
+  async function generateLine(index) {
+    const promptText = document.getElementById(`prompt-${index}`)?.value?.trim();
+    if (!promptText) {
+      showToast("Prompt is empty", "error");
+      return;
+    }
+
+    addLog(`--- Starting generation for line ${index + 1} ---`, null, "info");
+    setBlockStatus(index, "generating");
+
+    try {
+      // ── Step 1: Type the prompt into Flow ──
+      addLog(`Line ${index + 1}: Setting prompt in Flow…`, null, "send");
+      const setResp = await sendCommand("SET_PROMPT", { text: promptText });
+      if (!setResp.ok) throw new Error(`SET_PROMPT failed: ${setResp.error}`);
+
+      // ── Step 2: Click the Generate button in Flow ──
+      addLog(`Line ${index + 1}: Clicking Generate…`, null, "send");
+      const genResp = await sendCommand("CLICK_GENERATE", {});
+      if (!genResp.ok) throw new Error(`CLICK_GENERATE failed: ${genResp.error}`);
+
+      // ── Success ──
+      setBlockStatus(index, "done");
+      addLog(`✓ Line ${index + 1}: Generation triggered in Flow`, null, "ok");
+      showToast(`✓ Line ${index + 1} sent to Flow`, "ok");
+
+    } catch (err) {
+      setBlockStatus(index, "error", err.message);
+      addLog(`✗ Line ${index + 1}: ${err.message}`, null, "error");
+      showToast(`✗ Line ${index + 1}: ${err.message}`, "error");
+    }
+  }
+
+
+  // ============================================================
+  // SECTION 10: BLOCK STATUS
+  // Updates the visual state of a single block.
+  // ============================================================
+
+  function setBlockStatus(index, status, errorMessage = "") {
+    const block = document.querySelector(`.block[data-index="${index}"]`);
+    const pill  = document.getElementById(`bstat-${index}`);
+    const btn   = document.getElementById(`genbtn-${index}`);
+    const regenBtn = document.getElementById(`regenbtn-${index}`);
+    const errEl = document.getElementById(`errmsg-${index}`);
+    if (!block) return;
+
+    block.dataset.status = status;
+    block.className = "block" + (status !== "idle" ? ` st-${status}` : "");
+    if (status !== 'idle') block.classList.add('expanded'); // Make sure we show it if status changed
+
+    // Config for each status: label, css class, button text, button disabled?
+    const cfg = {
+      idle:       { label: "Idle",     cls: "s-idle",       btnText: "▶ Generate", disabled: false },
+      generating: { label: "Sending…", cls: "s-generating", btnText: "⏳ Sending…", disabled: true  },
+      done:       { label: "Done ✓",   cls: "s-done",       btnText: "✓ Done",      disabled: true  },
+      error:      { label: "Error",    cls: "s-error",       btnText: "↺ Retry",    disabled: false },
+    }[status] || { label: status, cls: "s-idle", btnText: "▶ Generate", disabled: false };
+
+    pill.textContent = cfg.label;
+    pill.className = `bstat ${cfg.cls}`;
+    btn.textContent = cfg.btnText;
+    btn.disabled = cfg.disabled;
+    
+    if (status === "done") {
+        btn.style.display = "none";
+        regenBtn.style.display = "inline-flex";
+    } else {
+        btn.style.display = "inline-flex";
+        // Do not force hide regen, let it stay if it was already regenerated
+        if (status === "error" || status === "generating") {
+           // Ensure correct visibility
+        }
+    }
+
+    if (errorMessage) errEl.textContent = errorMessage;
+
+    updateProgress();
+  }
+
+  // Update the progress bar based on how many blocks are done
+  function updateProgress() {
+    const all  = document.querySelectorAll(".block").length;
+    const done = document.querySelectorAll(".block[data-status='done']").length;
+    const errs = document.querySelectorAll(".block[data-status='error']").length;
+    if (!all) return;
+
+    document.getElementById("progFill").style.width = Math.round((done / all) * 100) + "%";
+    document.getElementById("progLbl").textContent =
+      `${done} / ${all} done${errs ? ` · ${errs} error${errs > 1 ? "s" : ""}` : ""}`;
+  }
+
+
+  // ============================================================
+  // SECTION 11: UTILITIES
+  // ============================================================
+
+  // Clear all blocks and reset the file input
+  function clearAll() {
+    state.lines = [];
+    document.getElementById("fileInput").value = "";
+    document.getElementById("uploadZone").classList.remove("loaded");
+    document.getElementById("uzMain").textContent = "Click to upload .txt or .md";
+    document.querySelector(".uz-sub").textContent = "One line per block";
+    document.getElementById("blocks").innerHTML = `
+      <div class="empty">
+        <div class="big">📝</div>
+        <p>Upload your script and paste your master prompt.<br>
+        Click <strong>Build Line Blocks</strong> to begin.</p>
+      </div>`;
+    document.getElementById("progWrap").style.display = "none";
+    document.getElementById("buildBtn").disabled = true;
+    addLog("Cleared all blocks", null, "info");
+  }
+
+  // Update the connection status indicator in the topbar
+  function setConn(state, text) {
+    document.getElementById("connDot").className =
+      "conn-dot" + (state === "ok" ? " ok" : state === "warn" ? " warn" : "");
+    document.getElementById("connText").textContent = text;
+  }
+
+  // Show a brief toast notification at the bottom of the screen
+  let _toastTimer;
+  function showToast(message, type = "") {
+    const el = document.getElementById("toast");
+    el.textContent = message;
+    el.className = "toast show" + (type ? " " + type : "");
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove("show"), 3500);
+  }
+
+  // Escape HTML special characters (prevents XSS in dynamic content)
+  function esc(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+
+  // ============================================================
+  // SECTION 12: STARTUP
+  // ============================================================
+
+  addLog("App loaded. Waiting for FlowPilot extension bridge…", null, "info");
+  addLog("If nothing happens, try: 1) Reload this page  2) Check extension is enabled", null, "warn");
+
+  // If the bridge hasn't connected after 4 seconds, show a helpful error
+  setTimeout(() => {
+    if (!state.bridgeReady) {
+      setConn("err", "Extension not found");
+      addLog("Bridge timeout after 4s. Possible causes:", null, "error");
+      addLog("  1. FlowPilot extension is not installed", null, "error");
+      addLog("  2. Go to chrome://extensions and reload FlowPilot", null, "error");
+      addLog("  3. Hard refresh this page: Ctrl+Shift+R", null, "error");
+    }
+  }, 4000);
+
+  </script>
+</body>
+</html>

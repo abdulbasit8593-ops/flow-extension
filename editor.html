@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FlowPilot - WYSIWYG Editor</title>
+  
+  <!-- Markdown Parsers via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://unpkg.com/turndown/dist/turndown.js"></script>
+
+  <style>
+    /* ============================================================
+       BASE STYLES & VARIABLES
+       Matching FlowPilot Dark Theme
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f0f0f;   
+      --surf:     #161616;   
+      --surf2:    #1c1c1c;   
+      --border:   #242424;   
+      --b2:       #303030;   
+      --text:     #e8e8e8;   
+      --muted:    #555;      
+      --dim:      #888;      
+      --indigo:   #6366f1;   
+      --ind2:     #4f46e5;   
+      --green:    #4ade80;   
+      --red:      #f87171;   
+      --r:        9px;       
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden; /* App-like full height layout */
+    }
+
+    /* ── TOPBAR ──────────────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 20px;
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surf);
+      flex-shrink: 0;
+    }
+
+    .logo {
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .logo em { color: var(--indigo); font-style: normal; }
+    .divider { width: 1px; height: 28px; background: var(--border); }
+
+    .read-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      background: var(--surf2);
+      border: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 7px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.12s;
+    }
+    .read-btn:hover { border-color: var(--b2); color: var(--text); }
+
+    /* Buttons */
+    .btn-primary {
+      background: var(--indigo); color: #fff;
+      border: none; border-radius: 7px;
+      padding: 8px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.12s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn-primary:hover { background: var(--ind2); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surf2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 7px; padding: 8px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.12s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn-secondary:hover { border-color: var(--b2); }
+
+    /* ── LAYOUT ──────────────────────────────────────────────── */
+    .layout {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 52px);
+    }
+
+    /* ── LEFT SIDEBAR (Project Explorer) ────────────────────────── */
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+    .sidebar-header {
+      padding: 15px;
+      border-bottom: 1px solid var(--border);
+    }
+    .file-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .file-item {
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-item:hover { background: var(--surf); color: var(--text); }
+    .file-item.active { background: rgba(99,102,241,0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
+    .file-icon { font-size: 14px; opacity: 0.7; }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 12px; }
+
+    /* ── MAIN EDITOR VIEW ────────────────────────────────────── */
+    .editor-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #0a0a0a;
+    }
+    .editor-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surf);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .current-filename { font-weight: 600; font-size: 14px; color: var(--text); }
+    .editor-status { font-size: 12px; color: var(--muted); }
+
+    /* Modern Toolbar */
+    .editor-toolbar {
+      padding: 8px 20px;
+      background: var(--surf);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .tool-btn {
+      background: transparent; border: 1px solid transparent; color: var(--dim);
+      border-radius: 5px; width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.1s; font-size: 14px; font-weight: 700;
+      font-family: serif;
+    }
+    .tool-btn:hover { background: var(--surf2); color: var(--text); border-color: var(--border); }
+    
+    /* WYSIWYG Canvas */
+    .wysiwyg-wrapper {
+      flex: 1;
+      overflow-y: auto;
+      padding: 40px 40px 40px 100px; /* Dedicated margin space on left */
+    }
+    #wysiwyg-editor {
+      width: 100%;
+      min-height: 100%;
+      outline: none;
+      font-size: 19px; /* Increased default font size */
+      line-height: 1.85; /* Better readability */
+      color: #f4f4f5;
+      padding-bottom: 150px;
+      padding-left: 30px; /* Breather room from the divider line */
+      border-left: 2px solid var(--surf2); /* Elegant document divider */
+    }
+
+    /* Word Count Gutter */
+    #wysiwyg-editor > * {
+      position: relative;
+    }
+    /* Elegant pill-shaped word count badge */
+    #wysiwyg-editor > *::before {
+      content: attr(data-words);
+      position: absolute;
+      left: -105px; /* Safely floating in the left margin space we reserved */
+      top: 4px;
+      width: 55px;
+      padding: 3px 6px;
+      text-align: center;
+      background: var(--surf);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--dim);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    #wysiwyg-editor > *:hover::before {
+      color: var(--text); /* Lights up when hovering paragraph */
+      border-color: var(--b2);
+    }
+
+    /* Document visual styles inside editor */
+    #wysiwyg-editor h1, h2, h3 { color: #fff; margin-top: 24px; margin-bottom: 12px; }
+    #wysiwyg-editor h1 { font-size: 2em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+    #wysiwyg-editor p { margin-bottom: 16px; }
+    #wysiwyg-editor blockquote { border-left: 4px solid var(--indigo); padding-left: 16px; color: var(--dim); margin: 0; }
+    
+    /* FlowPilot Highlight Standard */
+    mark { border-radius: 3px; padding: 1px 4px; color: #000; font-weight: 500; }
+    mark[data-color="red"] { background-color: #f87171; }
+    mark[data-color="yellow"] { background-color: #facc15; }
+    mark[data-color="green"] { background-color: #4ade80; }
+    mark[data-color="blue"] { background-color: #60a5fa; }
+    mark[data-color="purple"] { background-color: #c084fc; }
+
+    /* ── CONTEXT MENU ────────────────────────────────────────── */
+    .context-menu {
+      position: absolute;
+      display: none;
+      background: var(--surf2);
+      border: 1px solid var(--b2);
+      border-radius: 7px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+      padding: 6px;
+      z-index: 1000;
+      min-width: 170px;
+    }
+    .context-menu-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 5px; cursor: pointer;
+      font-size: 13px; font-weight: 500; color: var(--text);
+    }
+    .context-menu-item:hover { background: #2a2a2a; }
+    .color-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+
+  </style>
+</head>
+<body>
+
+  <!-- idb-keyval via CDN for IndexedDB promises -->
+  <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
+
+  <div class="topbar">
+    <div class="logo">Flow<em>Pilot</em></div>
+    <div class="divider"></div>
+    <a href="/" class="read-btn">← Back to Generator</a>
+    <div class="divider"></div>
+    
+    <!-- PROJECT SELECTOR -->
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase;">Project:</span>
+      <select id="projectSelect" onchange="switchProject(this.value)" style="background: var(--surf2); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 4px 8px; font-size: 13px; outline: none;">
+        <option value="">-- Select Project --</option>
+      </select>
+      <button class="btn-primary" style="padding: 4px 10px; font-size: 12px;" onclick="createNewProject()">+ New</button>
+    </div>
+
+  </div>
+
+  <div class="layout">
+    <!-- PROJECT EXPLORER -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <button class="btn-primary" style="width:100%" onclick="openProjectFolder()">
+          📂 Open Project Folder
+        </button>
+      </div>
+      <div class="file-tree" id="fileTree">
+        <div class="empty-state">
+          No project opened.<br>Click the button above to select your local folder containing .md or .txt scripts.
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN EDITOR -->
+    <div class="editor-container">
+      <div class="editor-header">
+        <div class="current-filename" id="currentFilename">No file open</div>
+        <div style="display:flex; gap:10px; align-items: center;">
+          <span class="editor-status" id="saveStatus"></span>
+          <button class="btn-secondary" id="saveBtn" onclick="saveActiveFile()" disabled>
+            💾 Auto-Save to Disk
+          </button>
+          <button class="btn-primary" id="sendBtn" onclick="sendToFlow()" disabled>
+            🚀 Send to Flow
+          </button>
+        </div>
+      </div>
+      
+      <div class="editor-toolbar">
+        <button class="tool-btn" onclick="execCmd('undo')" title="Undo (Ctrl+Z)">↩</button>
+        <button class="tool-btn" onclick="execCmd('redo')" title="Redo (Ctrl+Y)">↪</button>
+        <div class="divider" style="height:20px; margin: 0 4px;"></div>
+        <button class="tool-btn" onclick="execCmd('bold')" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button class="tool-btn" onclick="execCmd('italic')" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button class="tool-btn" onclick="execCmd('underline')" title="Underline (Ctrl+U)"><u>U</u></button>
+        <div class="divider" style="height:20px; margin: 0 4px;"></div>
+        <span style="font-size: 11px; color: var(--dim)">Right-click text to highlight!</span>
+      </div>
+
+      <div class="wysiwyg-wrapper">
+        <div id="wysiwyg-editor" contenteditable="true" spellcheck="false">
+          <!-- Rich text content goes here -->
+          <h2 style="color:var(--dim); font-weight:400; text-align:center; margin-top:20%">
+            Open a project folder to begin editing.
+          </h2>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // STATE
+    // ============================================================
+    let directoryHandle = null;
+    let activeFileHandle = null;
+    let fileHandlesCache = new Map(); // Maps filename -> FileSystemFileHandle
+    let currentProject = ""; // State for selected project
+
+    const fileTree = document.getElementById('fileTree');
+    const wysiwygEditor = document.getElementById('wysiwyg-editor');
+    const currentFilename = document.getElementById('currentFilename');
+    const saveBtn = document.getElementById('saveBtn');
+    const saveStatus = document.getElementById('saveStatus');
+
+    // ============================================================
+    // PROJECT MANAGEMENT & DATABASE
+    // ============================================================
+    
+    async function loadProjects() {
+      try {
+        const res = await fetch("http://localhost:3000/api/projects");
+        if (res.ok) {
+          const data = await res.json();
+          const select = document.getElementById('projectSelect');
+          select.innerHTML = '<option value="">-- Select Project --</option>';
+          data.projects.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = p.name;
+            select.appendChild(opt);
+          });
+          
+          // Restore last selected
+          const activeProj = localStorage.getItem("activeProjectName");
+          if (activeProj && data.projects.find(p => p.name === activeProj)) {
+             select.value = activeProj;
+             await switchProject(activeProj);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load projects", e);
+      }
+    }
+
+    async function createNewProject() {
+      const name = prompt("Enter a unique Project Name:");
+      if (!name || name.trim() === "") return;
+      try {
+        const res = await fetch("http://localhost:3000/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() })
+        });
+        if (res.ok) {
+          await loadProjects();
+          document.getElementById('projectSelect').value = name.trim();
+          switchProject(name.trim());
+        } else {
+          alert("Error creating project.");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function switchProject(projectName) {
+      if (!projectName) {
+        currentProject = "";
+        localStorage.removeItem("activeProjectName");
+        directoryHandle = null;
+        fileTree.innerHTML = '<div class="empty-state">No project selected.</div>';
+        wysiwygEditor.innerHTML = '<h2 style="color:var(--dim); font-weight:400; text-align:center; margin-top:20%">Select a project to begin editing.</h2>';
+        currentFilename.textContent = "No file open";
+        activeFileHandle = null;
+        updateWordCounts();
+        return;
+      }
+      
+      currentProject = projectName;
+      localStorage.setItem("activeProjectName", projectName);
+
+      // Load DB state (editor_content)
+      try {
+        const res = await fetch(`http://localhost:3000/api/projects/${encodeURIComponent(projectName)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.project) {
+            // Restore editor content if any
+            if (data.project.editor_content) {
+              const html = marked.parse(data.project.editor_content);
+              wysiwygEditor.innerHTML = html;
+              updateWordCounts();
+            } else {
+              wysiwygEditor.innerHTML = "<p><br></p>";
+            }
+          }
+        }
+      } catch (e) { console.error("Error fetching project content", e); }
+
+      // Restore IndexDB Directory Handle
+      await restoreDirectoryHandle(projectName);
+    }
+
+    // ============================================================
+    // MARKDOWN <-> WYSIWYG HTML CONVERSION
+    // We use Marked for MD->HTML and Turndown for HTML->MD
+    // ============================================================
+    
+    // Configure Turndown to KEEP our <mark> highlight tags natively inside standard Markdown!
+    const turndownService = new TurndownService({
+      headingStyle: 'atx', // # Heading instead of underlining
+      codeBlockStyle: 'fenced'
+    });
+    // This critical rule tells the engine to never strip our custom highlight tags
+    turndownService.keep(['mark', 'u']);
+
+    // Configure Marked to not sanitize our <mark> tags
+    marked.setOptions({
+      breaks: false,   // Disable single line breaks to enforce block level elements
+      gfm: true,
+    });
+
+    // ============================================================
+    // FILE SYSTEM ACCESS API WITH NATIVE PERSISTENCE
+    // ============================================================
+    
+    async function restoreDirectoryHandle(projectName) {
+       try {
+         const handle = await idbKeyval.get(`dir_${projectName}`);
+         if (handle) {
+           // We have a handle, check if we have permission
+           const options = { mode: 'readwrite' };
+           if ((await handle.queryPermission(options)) === 'granted') {
+             directoryHandle = handle;
+             await renderFileTree();
+           } else {
+             // Request permission
+             if ((await handle.requestPermission(options)) === 'granted') {
+                directoryHandle = handle;
+                await renderFileTree();
+             } else {
+                fileTree.innerHTML = '<div class="empty-state">Permission to local project folder denied.<br><button class="btn-primary" onclick="openProjectFolder()">📂 Locate Folder Again</button></div>';
+             }
+           }
+         } else {
+             fileTree.innerHTML = '<div class="empty-state">No local folder linked.<br><br><button class="btn-primary" onclick="openProjectFolder()">📂 Connect Folder</button></div>';
+         }
+       } catch (err) {
+         console.error("IndexedDB Error:", err);
+       }
+    }
+
+    async function openProjectFolder() {
+      if (!currentProject) { alert("Please select a project first!"); return; }
+      try {
+        directoryHandle = await window.showDirectoryPicker();
+        // Save to IndexedDB
+        await idbKeyval.set(`dir_${currentProject}`, directoryHandle);
+        await renderFileTree();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error(err);
+          alert('Error opening folder.');
+        }
+      }
+    }
+    
+    async function renderFileTree() {
+        if (!directoryHandle) return;
+        fileTree.innerHTML = '';
+        fileHandlesCache.clear();
+        let foundAny = false;
+        
+        let lastActiveFile = localStorage.getItem('lastActiveFile_' + currentProject);
+        let fileToAutoLoad = null;
+        let fileToAutoLoadUI = null;
+
+        for await (const entry of directoryHandle.values()) {
+          if (entry.kind === 'file' && (entry.name.endsWith('.md') || entry.name.endsWith('.txt'))) {
+            foundAny = true;
+            fileHandlesCache.set(entry.name, entry);
+            
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.innerHTML = `<span class="file-icon">📝</span> ${entry.name}`;
+            div.onclick = () => loadFile(entry, div);
+            fileTree.appendChild(div);
+            
+            if (lastActiveFile === entry.name) {
+                fileToAutoLoad = entry;
+                fileToAutoLoadUI = div;
+            }
+          }
+        }
+        
+        if (!foundAny) {
+          fileTree.innerHTML = '<div class="empty-state">No .md or .txt files found in this folder.</div>';
+        } else if (fileToAutoLoad && fileToAutoLoadUI) {
+          loadFile(fileToAutoLoad, fileToAutoLoadUI);
+        }
+    }
+
+    async function loadFile(fileHandle, uiElement) {
+      if (!fileHandle) return;
+      
+      // Update UI active state
+      document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+      if (uiElement) uiElement.classList.add('active');
+
+      activeFileHandle = fileHandle;
+      currentFilename.textContent = fileHandle.name;
+      if (currentProject) {
+         localStorage.setItem('lastActiveFile_' + currentProject, fileHandle.name);
+      }
+      saveBtn.disabled = false;
+      document.getElementById('sendBtn').disabled = false;
+      saveStatus.textContent = "";
+
+      try {
+        const file = await fileHandle.getFile();
+        const rawMarkdown = await file.text();
+        
+        // Convert Markdown to visual HTML
+        const html = marked.parse(rawMarkdown);
+        wysiwygEditor.innerHTML = html;
+        updateWordCounts();
+        
+      } catch (err) {
+        console.error('Error reading file:', err);
+        wysiwygEditor.innerHTML = `<p style="color:red">Error reading file: ${err.message}</p>`;
+      }
+    }
+
+    async function saveActiveFile() {
+      if (!currentProject) return;
+
+      saveStatus.textContent = "Saving...";
+      
+      try {
+        let htmlContent = wysiwygEditor.innerHTML;
+        const markdown = turndownService.turndown(htmlContent);
+
+        // 1. Save to SQLite via Express (Live Editor Content)
+        await fetch(`http://localhost:3000/api/projects/${encodeURIComponent(currentProject)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ editor_content: markdown })
+        });
+
+        // 2. Save natively to user's disk if a file is open
+        if (activeFileHandle && directoryHandle) {
+           const options = { mode: 'readwrite' };
+           if ((await activeFileHandle.queryPermission(options)) === 'granted') {
+             const writable = await activeFileHandle.createWritable();
+             await writable.write(markdown);
+             await writable.close();
+           }
+        }
+
+        saveStatus.textContent = "✓ Saved natively";
+        setTimeout(() => { if(saveStatus.textContent==="✓ Saved natively") saveStatus.textContent=""; }, 2000);
+
+      } catch (err) {
+        console.error('Error saving:', err);
+        saveStatus.textContent = `✗ Save Failed: ${err.message}`;
+      }
+    }
+
+    // Update word count for each paragraph block natively
+    function updateWordCounts() {
+      Array.from(wysiwygEditor.children).forEach(child => {
+        // Enforce parsing only for block wrappers (ignoring stray line breaks at root)
+        if (child.tagName === 'BR') return;
+        const text = child.textContent.trim();
+        if (text === '') {
+          child.setAttribute('data-words', '0w'); 
+        } else {
+          const words = text.split(/\s+/).length;
+          child.setAttribute('data-words', words + 'w');
+        }
+      });
+    }
+
+    // Bridge Logic
+    async function sendToFlow() {
+      if (!currentProject) { alert("Please select a project."); return; }
+      
+      let htmlContent = wysiwygEditor.innerHTML;
+      const markdown = turndownService.turndown(htmlContent);
+      
+      // Parse lines out accurately
+      const parsedLines = [];
+      const lines = markdown.split("\n").map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith("#") && !l.startsWith("//"));
+      
+      // We parse out the DOM node again just to compute accurate lines for the server DB
+      lines.forEach((rawLine, index) => {
+        const div = document.createElement('div');
+        div.innerHTML = rawLine;
+        const cleanText = (div.textContent || div.innerText || "").trim();
+        let color = null;
+        const mark = div.querySelector('mark');
+        if (mark && mark.dataset.color) color = mark.dataset.color;
+        const words = cleanText === "" ? 0 : cleanText.split(/\s+/).length;
+        
+        parsedLines.push({
+          text: cleanText,
+          words: words,
+          color: color,
+          originalHtml: rawLine,
+          sequence_index: index,
+          added_at: new Date().toISOString()
+        });
+      });
+
+      // Patch the editor_content AND the lines_history into SQLite
+      await fetch(`http://localhost:3000/api/projects/${encodeURIComponent(currentProject)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+           editor_content: markdown,
+           lines_history: parsedLines
+        })
+      });
+
+      localStorage.setItem('flowpilot_script', markdown); // Keep local fallback for fast loading
+      window.location.href = '/';
+    }
+
+    // Auto-save debounced
+    let saveTimer = null;
+    wysiwygEditor.addEventListener('input', () => {
+      updateWordCounts();
+      saveStatus.textContent = "Unsaved changes";
+      document.getElementById('sendBtn').disabled = false;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveActiveFile, 2000); 
+    });
+
+    // Initialize projects on load
+    window.addEventListener("DOMContentLoaded", loadProjects);
+
+
+    // ============================================================
+    // RICH TEXT TOOLBAR COMMANDS
+    // ============================================================
+    function execCmd(command) {
+      document.execCommand(command, false, null);
+      wysiwygEditor.focus();
+    }
+    
+    // Keyboard Shortcuts
+    wysiwygEditor.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); execCmd('bold'); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'i') { e.preventDefault(); execCmd('italic'); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'u') { e.preventDefault(); execCmd('underline'); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        saveActiveFile();
+      }
+      
+      // Fix Enter key bug mapping purely to new paragraph blocks to compute lines faithfully
+      if (e.key === 'Enter') {
+        document.execCommand('formatBlock', false, 'p');
+      }
+    });
+
+    // Prevent styled pasting to keep text color and theme consistent
+    wysiwygEditor.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.originalEvent || e).clipboardData.getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
+
+    // ============================================================
+    // RIGHT CLICK CONTEXT MENU FOR HIGHLIGHTS
+    // ============================================================
+    const colors = [
+      { name: "Red", value: "#f87171" },
+      { name: "Yellow", value: "#facc15" },
+      { name: "Green", value: "#4ade80" },
+      { name: "Blue", value: "#60a5fa" },
+      { name: "Purple", value: "#c084fc" },
+      { name: "Orange", value: "#fb923c" }
+    ];
+
+    const contextMenu = document.createElement("div");
+    contextMenu.className = "context-menu";
+    document.body.appendChild(contextMenu);
+
+    // Populate Context Menu Colors
+    colors.forEach(color => {
+      const item = document.createElement("div");
+      item.className = "context-menu-item";
+      item.innerHTML = `<span class="color-dot" style="background:${color.value}"></span> Highlight ${color.name}`;
+      
+      item.onmousedown = (e) => {
+        e.preventDefault(); 
+        applyHighlight(color);
+        contextMenu.style.display = "none";
+      };
+      contextMenu.appendChild(item);
+    });
+
+    // Clear Highlight Tool
+    const clearItem = document.createElement("div");
+    clearItem.className = "context-menu-item";
+    clearItem.style.borderTop = "1px solid var(--border)";
+    clearItem.innerHTML = `<span style="font-size:16px;">🧹</span> Clear Style`;
+    clearItem.onmousedown = (e) => {
+      e.preventDefault();
+      // Browser native format stripping
+      document.execCommand("removeFormat", false, null);
+      contextMenu.style.display = "none";
+      
+      // Force trigger auto save
+      wysiwygEditor.dispatchEvent(new Event('input'));
+    };
+    contextMenu.appendChild(clearItem);
+
+    function applyHighlight(color) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) return; // Ignore if no text selected
+
+      // Create formatting element
+      const mark = document.createElement("mark");
+      mark.style.backgroundColor = color.value;
+      mark.setAttribute("data-color", color.name.toLowerCase()); // Vital for parsing later
+
+      // Wrap safe
+      try {
+        range.surroundContents(mark);
+      } catch (err) {
+        // If selection spans multiple block elements, fallback to raw execCommand
+        // (This is a common browser limitation but works for inline text)
+        document.execCommand('hiliteColor', false, color.value); 
+        // We miss our data-tag here, but this prevents crashing. 
+        // A complex recursive wrapper is required to perfectly wrap multi-paragraph highlights.
+      }
+      
+      selection.removeAllRanges();
+      wysiwygEditor.dispatchEvent(new Event('input')); // Notify change for autosave
+    }
+
+    // Handlers for Context Menu
+    document.addEventListener("mousedown", (e) => {
+      if (!contextMenu.contains(e.target)) contextMenu.style.display = "none";
+    });
+
+    wysiwygEditor.addEventListener("contextmenu", (e) => {
+      const selection = window.getSelection();
+      if (!selection.isCollapsed) {
+        e.preventDefault();
+        
+        let x = e.pageX;
+        let y = e.pageY;
+        
+        contextMenu.style.display = "block";
+        const menuRect = contextMenu.getBoundingClientRect();
+        if (x + menuRect.width > window.innerWidth) x -= menuRect.width;
+        if (y + menuRect.height > window.innerHeight) y -= menuRect.height;
+        
+        contextMenu.style.left = x + "px";
+        contextMenu.style.top = y + "px";
+      }
+    });
+
+  </script>
+</body>
+</html>

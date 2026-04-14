@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "FlowPilot",
+  "version": "0.1.0",
+  "description": "Automate Google Flow for avatar video generation workflows",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://labs.google/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://labs.google/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["app-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FlowPilot"
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

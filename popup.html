@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FlowPilot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111;
+      color: #e5e5e5;
+      display: flex;
+      flex-direction: column;
+      min-height: 500px;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 14px; border-bottom: 1px solid #1e1e1e;
+    }
+    .logo { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.3px; }
+    .logo span { color: #6366f1; }
+    .status-pill {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 10px; color: #555;
+      background: #1a1a1a; border: 1px solid #222;
+      padding: 3px 8px; border-radius: 20px;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 5px #4ade80; }
+    .dot.error   { background: #f87171; box-shadow: 0 0 5px #f87171; }
+    .dot.waiting { background: #facc15; box-shadow: 0 0 5px #facc15; }
+
+    /* ── Page tabs ───────────────────────────────────── */
+    .page-tabs { display: flex; border-bottom: 1px solid #1e1e1e; }
+    .page-tab {
+      flex: 1; padding: 7px; font-size: 10px; font-weight: 700;
+      text-align: center; cursor: pointer; color: #555;
+      border: none; background: none;
+      border-bottom: 2px solid transparent;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .page-tab.active { color: #6366f1; border-bottom-color: #6366f1; }
+    .page-tab:hover:not(.active) { color: #888; }
+    .page { display: none; flex-direction: column; }
+    .page.active { display: flex; }
+
+    /* ── Scrollable content area ─────────────────────── */
+    .scroll-area {
+      overflow-y: auto; flex: 1;
+      padding: 12px 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+      max-height: 460px;
+    }
+
+    /* ── Section headers ─────────────────────────────── */
+    .section-title {
+      font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px;
+      color: #3a3a3a; padding-top: 4px;
+    }
+
+    /* ── Flow-style tab groups (pill/segmented control) ── */
+    .flow-tab-group {
+      display: flex;
+      background: #1a1a1a; border: 1px solid #252525;
+      border-radius: 10px; padding: 3px; gap: 2px;
+    }
+    .flow-tab {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 5px; padding: 6px 8px;
+      border-radius: 7px; border: none; background: none;
+      color: #666; font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .flow-tab:hover:not(.active) { color: #999; background: #222; }
+    .flow-tab.active { background: #2a2a2a; color: #e5e5e5; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .flow-tab.running { opacity: 0.6; pointer-events: none; }
+    .flow-tab.success { color: #4ade80; }
+    .flow-tab.error-state { color: #f87171; }
+    .flow-tab .tab-icon { font-size: 14px; }
+    .flow-tab .spinner {
+      width: 10px; height: 10px;
+      border: 2px solid #333; border-top-color: #6366f1;
+      border-radius: 50%; animation: spin 0.5s linear infinite; display: none;
+    }
+    .flow-tab.running .spinner { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Big action buttons ──────────────────────────── */
+    .action-btn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; width: 100%;
+      border-radius: 9px; border: 1px solid #1e1e1e;
+      background: #161616; color: #e5e5e5;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; text-align: left;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .action-btn:hover { background: #1e1e1e; border-color: #2e2e2e; }
+    .action-btn:active { transform: scale(0.985); }
+    .action-btn.running { border-color: #6366f1; background: #16162a; }
+    .action-btn.success { border-color: #4ade80; background: #0a180d; }
+    .action-btn.error-state { border-color: #f87171; background: #180a0a; }
+    .action-btn .a-icon { font-size: 17px; flex-shrink: 0; }
+    .action-btn .a-label { flex: 1; }
+    .action-btn .a-desc { font-size: 10px; color: #555; margin-top: 1px; font-weight: 400; }
+    .action-btn .spinner {
+      width: 13px; height: 13px; border: 2px solid #333;
+      border-top-color: #6366f1; border-radius: 50%;
+      animation: spin 0.5s linear infinite; flex-shrink: 0; display: none;
+    }
+    .action-btn.running .spinner { display: block; }
+    .action-btn.generate {
+      background: #1a1a2e; border-color: #3a3af0;
+      justify-content: center; font-size: 14px;
+    }
+    .action-btn.generate:hover { background: #22223a; }
+
+    /* ── Mode-conditional sections ───────────────────── */
+    .video-only, .image-only { display: none; flex-direction: column; gap: 10px; }
+    body.mode-video .video-only { display: flex; }
+    body.mode-image .image-only { display: flex; }
+
+    /* ── Prompt area ─────────────────────────────────── */
+    .prompt-wrap { display: flex; flex-direction: column; gap: 5px; }
+    .prompt-wrap textarea {
+      width: 100%; height: 68px;
+      background: #161616; border: 1px solid #1e1e1e;
+      border-radius: 8px; color: #e5e5e5;
+      font-size: 12px; padding: 8px 10px;
+      resize: none; outline: none; font-family: inherit; line-height: 1.5;
+    }
+    .prompt-wrap textarea:focus { border-color: #6366f1; }
+
+    /* ── Model buttons ───────────────────────────────── */
+    .model-group { display: flex; flex-direction: column; gap: 4px; }
+    .model-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-radius: 8px;
+      border: 1px solid #1e1e1e; background: #161616;
+      color: #bbb; font-size: 12px; cursor: pointer;
+      transition: all 0.12s; text-align: left; width: 100%;
+    }
+    .model-btn:hover { background: #1e1e1e; color: #e5e5e5; }
+    .model-btn.active { border-color: #6366f1; background: #16162a; color: #a5b4fc; }
+    .model-btn.running { opacity: 0.6; pointer-events: none; }
+    .model-btn.success { border-color: #4ade80; color: #4ade80; background: #0a180d; }
+    .model-btn .spinner {
+      width: 11px; height: 11px; border: 2px solid #333;
+      border-top-color: #6366f1; border-radius: 50%;
+      animation: spin 0.5s linear infinite; display: none; margin-left: auto;
+    }
+    .model-btn.running .spinner { display: block; }
+
+    /* ── Logs ────────────────────────────────────────── */
+    .log-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px; border-bottom: 1px solid #1a1a1a;
+      font-size: 10px; color: #444;
+    }
+    .clear-log { background: none; border: none; color: #f87171; cursor: pointer; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+    .clear-log:hover { background: #1a0a0a; }
+    .log-list { overflow-y: auto; padding: 8px 14px; display: flex; flex-direction: column; gap: 4px; max-height: 440px; }
+    .log-entry { font-size: 10px; line-height: 1.5; padding: 5px 8px; border-radius: 5px; background: #141414; border-left: 3px solid #222; }
+    .log-entry.INFO    { border-left-color: #60a5fa; }
+    .log-entry.SUCCESS { border-left-color: #4ade80; }
+    .log-entry.WARN    { border-left-color: #facc15; }
+    .log-entry.ERROR   { border-left-color: #f87171; background: #180a0a; }
+    .log-meta { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; }
+    .log-badge { font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 3px; }
+    .INFO    .log-badge { color: #60a5fa; background: #0d1a2a; }
+    .SUCCESS .log-badge { color: #4ade80; background: #0a180d; }
+    .WARN    .log-badge { color: #facc15; background: #1a1500; }
+    .ERROR   .log-badge { color: #f87171; background: #1a0505; }
+    .log-time { color: #333; font-size: 9px; }
+    .log-src  { color: #444; font-size: 9px; }
+    .log-msg  { color: #bbb; }
+    .log-data { color: #444; font-size: 9px; margin-top: 2px; word-break: break-all; }
+    .log-empty { text-align: center; color: #333; padding: 30px 0; font-size: 11px; }
+
+    /* ── Footer ──────────────────────────────────────── */
+    .footer { display: flex; align-items: center; justify-content: space-between; padding: 7px 14px; border-top: 1px solid #1a1a1a; }
+    .footer-msg { font-size: 10px; color: #333; }
+    .footer-v   { font-size: 10px; color: #2a2a2a; }
+  </style>
+</head>
+<body class="mode-video">
+
+  <div class="header">
+    <div class="logo">Flow<span>Pilot</span></div>
+    <div class="status-pill"><div class="dot" id="dot"></div><span id="statusText">Checking…</span></div>
+  </div>
+
+  <div class="page-tabs">
+    <button class="page-tab active" data-page="controls">Controls</button>
+    <button class="page-tab" data-page="logs">Logs</button>
+  </div>
+
+  <!-- ══ CONTROLS ══ -->
+  <div class="page active" id="page-controls">
+    <div class="scroll-area">
+
+      <!-- Mode -->
+      <div class="section-title">Mode</div>
+      <div class="flow-tab-group">
+        <button class="flow-tab" data-command="SET_MODE_IMAGE" id="tab-mode-image">
+          <span class="tab-icon">🖼️</span> Image <div class="spinner"></div>
+        </button>
+        <button class="flow-tab active" data-command="SET_MODE_VIDEO" id="tab-mode-video">
+          <span class="tab-icon">🎬</span> Video <div class="spinner"></div>
+        </button>
+      </div>
+
+      <!-- VIDEO-ONLY -->
+      <div class="video-only">
+        <div class="section-title">Video Type</div>
+        <div class="flow-tab-group">
+          <button class="flow-tab active" data-command="SET_VIDEO_MODE_FRAMES">
+            🎞️ Frames <div class="spinner"></div>
+          </button>
+          <button class="flow-tab" data-command="SET_VIDEO_MODE_INGREDIENTS">
+            🧩 Ingredients <div class="spinner"></div>
+          </button>
+        </div>
+
+        <div class="section-title">Aspect Ratio</div>
+        <div class="flow-tab-group">
+          <button class="flow-tab active" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"9:16"}'>9:16<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"16:9"}'>16:9<div class="spinner"></div></button>
+        </div>
+
+        <div class="section-title">Count</div>
+        <div class="flow-tab-group">
+          <button class="flow-tab" data-command="SET_COUNT" data-payload='{"count":"x1"}'>x1<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_COUNT" data-payload='{"count":"x2"}'>x2<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_COUNT" data-payload='{"count":"x3"}'>x3<div class="spinner"></div></button>
+          <button class="flow-tab active" data-command="SET_COUNT" data-payload='{"count":"x4"}'>x4<div class="spinner"></div></button>
+        </div>
+
+        <div class="section-title">Video Model</div>
+        <div class="model-group">
+          <button class="model-btn active" data-command="SELECT_VIDEO_MODEL" data-payload='{"modelName":"Veo 3.1 - Fast"}'>🎬 Veo 3.1 — Fast<div class="spinner"></div></button>
+          <button class="model-btn" data-command="SELECT_VIDEO_MODEL" data-payload='{"modelName":"Veo 3.1 - Quality"}'>🎬 Veo 3.1 — Quality<div class="spinner"></div></button>
+        </div>
+      </div>
+
+      <!-- IMAGE-ONLY -->
+      <div class="image-only">
+        <div class="section-title">Aspect Ratio</div>
+        <div class="flow-tab-group">
+          <button class="flow-tab" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"16:9"}'>16:9<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"4:3"}'>4:3<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"1:1"}'>1:1<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"3:4"}'>3:4<div class="spinner"></div></button>
+          <button class="flow-tab active" data-command="SET_ASPECT_RATIO" data-payload='{"ratio":"9:16"}'>9:16<div class="spinner"></div></button>
+        </div>
+
+        <div class="section-title">Count</div>
+        <div class="flow-tab-group">
+          <button class="flow-tab" data-command="SET_COUNT" data-payload='{"count":"x1"}'>x1<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_COUNT" data-payload='{"count":"x2"}'>x2<div class="spinner"></div></button>
+          <button class="flow-tab" data-command="SET_COUNT" data-payload='{"count":"x3"}'>x3<div class="spinner"></div></button>
+          <button class="flow-tab active" data-command="SET_COUNT" data-payload='{"count":"x4"}'>x4<div class="spinner"></div></button>
+        </div>
+
+        <div class="section-title">Image Model</div>
+        <div class="model-group">
+          <button class="model-btn" data-command="SELECT_IMAGE_MODEL" data-payload='{"modelName":"Nano Banana Pro"}'>🍌 Nano Banana Pro<div class="spinner"></div></button>
+          <button class="model-btn active" data-command="SELECT_IMAGE_MODEL" data-payload='{"modelName":"Nano Banana 2"}'>🍌 Nano Banana 2<div class="spinner"></div></button>
+          <button class="model-btn" data-command="SELECT_IMAGE_MODEL" data-payload='{"modelName":"Imagen 4"}'>🎨 Imagen 4<div class="spinner"></div></button>
+        </div>
+      </div>
+
+      <!-- Prompt -->
+      <div class="section-title">Prompt</div>
+      <div class="prompt-wrap">
+        <textarea id="promptInput" placeholder="Paste a test prompt here…"></textarea>
+      </div>
+      <div class="flow-tab-group">
+        <button class="flow-tab" data-command="SET_PROMPT">✏️ Set Prompt<div class="spinner"></div></button>
+        <button class="flow-tab" data-command="READ_PROMPT">📋 Read Back<div class="spinner"></div></button>
+      </div>
+
+      <!-- Start Frame / End Frame / Add Ingredient (dynamic based on subMode) -->
+      <div class="section-title">Frames / Ingredients</div>
+      <div id="frame-area">
+        <!-- Default: show Start Frame button. Updated dynamically by JS based on subMode. -->
+        <button class="action-btn" data-command="CLICK_START_FRAME">
+          <span class="a-icon">🖼️</span>
+          <span class="a-label">Set Start Frame<div class="a-desc">Opens the upload / asset picker</div></span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+
+      <!-- Generate -->
+      <button class="action-btn generate" data-command="CLICK_GENERATE">
+        <span class="a-icon">🚀</span><span>Generate</span>
+        <div class="spinner"></div>
+      </button>
+
+      <!-- Diagnostics -->
+      <div class="section-title">Diagnostics</div>
+      <div class="flow-tab-group">
+        <button class="flow-tab" data-command="PING">🔗 Ping<div class="spinner"></div></button>
+        <button class="flow-tab" data-command="GET_PAGE_INFO">🔍 Page Info<div class="spinner"></div></button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ LOGS ══ -->
+  <div class="page" id="page-logs">
+    <div class="log-bar">
+      <span id="logCount">0 entries</span>
+      <button class="clear-log" id="clearLogsBtn">Clear</button>
+    </div>
+    <div class="log-list" id="logList"><div class="log-empty">No logs yet.</div></div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-msg" id="footerMsg">Ready</span>
+    <span class="footer-v">v0.1.0</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
